@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tookaride</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="awesome">
+  <meta name="author" content="tookaride labs">
+
+  <link href="bootstrap/css/bootstrap.css" rel="stylesheet">
+  <link href="bootstrap/css/bootstrap-responsive.css" rel="stylesheet">
+  <link href="css/local.css" rel="stylesheet">
+  <link href="css/map.css" rel="stylesheet">
+  <link href="css/loading.css" rel="stylesheet">
+
+  <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+  <!-- copied html5.js locally from https://html5shim.googlecode.com/svn/trunk/html5.js -->
+  <!--[if lt IE 9]>
+      <script src="bootstrap/js/html5.js"></script>
+    <![endif]-->
+
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="bootstrap/ico/apple-touch-icon-144-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="114x114" href="bootstrap/ico/apple-touch-icon-114-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="72x72" href="bootstrap/ico/apple-touch-icon-72-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" href="bootstrap/ico/apple-touch-icon-57-precomposed.png">
+  <link rel="shortcut icon" href="bootstrap/ico/favicon.ico">
+
+  <script src="bootstrap/js/jquery.js"></script>
+  <script src="bootstrap/js/bootstrap-tooltip.js"></script>
+  <script src="bootstrap/js/bootstrap-popover.js"></script>
+  <script src="bootstrap/js/bootstrap-button.js"></script>
+  <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?sensor=true"></script>
+  <script type="text/javascript" src="js/StyledMarker.js"></script>
+  <script src="socket.io/socket.io.js"></script>
+  <script src="js/ajax.js"></script>
+  <script type="text/javascript">
+
+    // #########################
+    // JQUERY DOCUMENT READY
+    // #########################
+    $(document).ready(function () {
+
+      // if the user is not logged in, send them to the login page
+      if (!$.cookie('userid')) {
+        go('login');
+      }
+
+      // EstablishSession 
+      // return of true or false in "coords" if sessionStorage["coordinates"] is populated, if so enable the map view
+      EstablishSession(function (coords) {
+        // enable the map view if there are stored coordinates in sessionStorage
+        if (coords) {
+          enableMap();
+          initializeMapData(JSON.parse(sessionStorage["coordinates"]));
+        }
+        // now check to see if the device is running
+        $.when(getIsRunningAjax($.cookie('userid')))
+        .done(function (data, status, response) {
+          if (data.result) {
+            // the device is running, enable the controls on the page
+            enablePage();
+            if (!coords) {
+              // the device is running but there are no stored coordinates, show the no data canvas
+              $('#noDataCanvas').attr('class', '');
+            }
+          } else {
+            // the device is not running, disable the controls on the page
+            disablePage();
+            if (!coords) {
+              // the device is not running, and there are no coordinates
+              // so we must see if the device is registered or not
+              // if not the user will be prompted to download the device client
+              $.when(getIsRegisteredAjax($.cookie('userid')))
+              .done(function (data, status, response) {
+                if (data.result) {
+                  // the device is registered (but not running and no session data)
+                  // show the notRunningNoData canvas
+                  $('#notRunningNoDataCanvas').attr('class', '');
+                } else {
+                  // the device is not registered
+                  $('#unregisteredCanvas').attr('class', '');
+                }
+              })
+              .fail(function () {
+                go("error");
+              });
+            }
+          }
+          socketSetup();
+        });
+      });
+
+      // set the page title
+      $.cookie('userid').lastIndexOf("s") === ($.cookie('userid').length - 1)
+        ? document.title = "tookaride > " + $.cookie('userid') + "' page"
+        : document.title = "tookaride > " + $.cookie('userid') + "'s page";
+
+      // set the noDataCanvas locate button username label
+      $("#noDataCanvasUsernameLabel").text($.cookie('userid'));
+
+      if ($.cookie('token')) {
+        $("#loggedInControls").attr('class', '');
+      } else {
+        $("#notLoggedInControls").attr('class', '');
+      }
+
+      // #########################
+      // DOC READY - PREFERENCES SCREEN
+      // #########################
+      // preferences modal 'show' event
+      $('#prefsModal').on('show', function () {
+        // if there is a token cookie
+        if ($.cookie('token')) {
+          setupPrefsModalPrefsForm();
+        } else {
+          // there is no token cookie, show the login form and hide the preferences form
+          $('#prefsModalPrefsForm').attr('class', 'hidden');
+          $('#prefsModalLoginForm').attr('class', '');
+          // clear the errors on the login form
+          clearPrefsModalLoginFormErrors();
+          $('#prefsModalLoginFormPasswordInput').val('');
+          $('#prefsModalLoginFormUsernameInput').val('');
+        }
+      });
+      // preferences modal 'hidden' event: 
+      // when hiding the preferences dialog, unselect the preferences link on the home page (usability)
+      $('#prefsModal').on('hidden', function () {
+        $("#prefslink").blur();
+      });
+      // set up modal button on "enter".  password form allows enter button, but prefs form (or any new inputs) does not
+      $("input").bind("keydown", function (event) {
+        var keycode = (event.keyCode ? event.keyCode : (event.which ? event.which : event.charCode));
+        if (keycode == 13) {
+          if (event.srcElement.id === "prefsModalLoginFormPasswordInput" || event.srcElement.id === "prefsModalLoginFormUsernameInput") { loginAccount(); }
+          return false;
+        } else {
+          return true;
+        }
+      });
+    });
+
+    // #########################
+    // PREFERENCES SCREEN
+    // #########################
+    function setupPrefsModalPrefsForm() {
+      setupPrefsModalPrefsFormDefaults(0, function () {
+        setupPrefsModalPrefsFormDefaults(1, function () {
+          // set the prefs modal username label to the userid
+          $("#prefsModalUsernameLabel").text($.cookie('userid'));
+          // "your url is" label
+          $("#prefsModalMapUrlLabel").text("https://tookaride.com/" + $.cookie('userid'));
+          $("#prefsModalMapUrlHref").attr("href", "https://tookaride.com/" + $.cookie('userid'));
+          // set up the security popover
+          $("#prefsModalSecurityPopover").popover();
+          //show the account preferences form and hide the login form
+          $('#prefsModalPrefsForm').attr('class', '');
+          $('#prefsModalLoginForm').attr('class', 'hidden');
+        });
+      });
+    }
+
+    function setPreferences() {
+      clearPrefsModalPrefsFormErrors();
+      if (!validatePrefsModalPrefsForm()) return false;
+      for (var i = 0; i < 3; i++) {
+        var prefname, prefval;
+        if (i === 0) {
+          prefname = "pwdenabled";
+          prefval = $("#prefsModalPrefsFormPasswordEnabledButton").attr("class").indexOf("btn-success") > 0 ? true : false;
+        } else if (i === 1) {
+          if ($("#prefsModalPrefsFormEmailInput").val().length > 0) {
+            prefname = "email";
+            prefval = $("#prefsModalPrefsFormEmailInput").val();
+          }
+        } else {
+          if ($('#prefsModalPrefsFormPasswordInput').val().length > 0) {
+            prefname = "password";
+            prefval = $("#prefsModalPrefsFormPasswordInput").val();
+          }
+        }
+        if (prefname) {
+          $.when(setPreferencesAjax($.cookie('userid'), prefval, prefname))
+          .done(function (data, status, response) {
+            if (!data.opr) {
+              go("error");
+            } else {
+              if (prefname === "email") {
+                $('#prefsModalPrefsFormEmailInput').val('');
+                $('#prefsModalPrefsFormEmailInput').attr('placeholder', prefval);
+              } else {
+                $('#prefsModalPrefsFormPasswordInput').val('');
+                $('#prefsModalPrefsFormPasswordInput').attr('placeholder', "enter a new password...");
+              }
+            }
+          })
+          .fail(function () {
+            go("error");
+          });
+        }
+        $('#prefsModal').modal('hide');
+      }
+    }
+
+    function validatePrefsModalPrefsForm() {
+      var valid = true;
+      if ($('#prefsModalPrefsFormEmailInput').val().indexOf("@") === -1 && $('#prefsModalPrefsFormEmailInput').val().length > 0) {
+        $('#prefsModalPrefsFormEmailErrorLabel').attr('class', 'alert alert-error');
+        $('#prefsModalPrefsFormEmailErrorLabel').text('sorry! not a valid email address');
+        valid = false;
+      }
+      if ($('#prefsModalPrefsFormPasswordInput').val().length === 1 || $('#prefsModalPrefsFormPasswordInput').val().length === 2) {
+        $('#prefsModalPrefsFormPasswordErrorLabel').attr('class', 'alert alert-error');
+        $('#prefsModalPrefsFormPasswordErrorLabel').text('sorry! your password is too short');
+        valid = false;
+      }
+      return valid;
+    }
+
+    function clearPrefsModalPrefsFormErrors() {
+      $('#prefsModalPrefsFormEmailErrorLabel').attr('class', 'hidden');
+      $('#prefsModalPrefsFormPasswordErrorLabel').attr('class', 'hidden');
+    }
+
+    function setupPrefsModalPrefsFormDefaults(type, callback) {
+      $.when(getPreferencesAjax($.cookie('userid'), type === 0 ? "pwdenabled" : "email"))
+      .done(function (data, status, response) {
+        if (type === 0) {
+          if (data.prefval) {
+            $("#prefsModalPrefsFormPasswordEnabledButton").attr("class", "btn btn-success");
+            $("#prefsModalPrefsFormPasswordEnabledButtonText").html("<i class='icon-resize-small icon-white'></i> password enabled");
+          } else {
+            $("#prefsModalPrefsFormPasswordEnabledButton").attr("class", "btn btn-danger");
+            $("#prefsModalPrefsFormPasswordEnabledButtonText").html("<i class='icon-resize-small icon-white'></i> password disabled");
+          }
+        } else {
+          $("#prefsModalPrefsFormEmailInput").attr("placeholder", data.prefval);
+        }
+        callback();
+      })
+      .fail(function () {
+        go("error");
+      })
+    }
+
+    // login - preferences screen may have login if password disabled and user not logged in
+    function loginAccount() {
+      clearPrefsModalLoginFormErrors();
+      if (!validatePrefsModalLoginFormInput()) return false;
+      $.when(loginAjax($('#prefsModalLoginFormUsernameInput').val(), $('#prefsModalLoginFormPasswordInput').val()))
+      .done(function (data, status, response) {
+        if (data.userid !== "") {
+          setupPrefsModalPrefsForm();
+        } else {
+          $('#prefsModalLoginFormErrorLabel').attr('class', 'alert alert-error');
+          $('#prefsModalLoginFormErrorLabel').text('sign in error, please try again');
+          $('#prefsModalLoginFormPasswordInput').val('');
+          $('#prefsModalLoginFormPasswordInput').focus();
+        }
+      })
+      .fail(function () {
+        go("error");
+      });
+    }
+
+    function validatePrefsModalLoginFormInput() {
+      if ($('#prefsModalLoginFormUsernameInput').val() === '' || $('#prefsModalLoginFormPasswordInput').val() === '') {
+        $('#prefsModalLoginFormErrorLabel').attr('class', 'alert alert-error');
+        $('#prefsModalLoginFormErrorLabel').text('sorry! all fields are required');
+        return false;
+      }
+      return true;
+    }
+
+    function clearPrefsModalLoginFormErrors() {
+      $('#prefsModalLoginFormErrorLabel').attr('class', 'hidden');
+    }
+
+    function togglePrefsModalPrefsFormPasswordEnabledButtonColor() {
+      if ($("#prefsModalPrefsFormPasswordEnabledButton").attr("class").indexOf("btn-success") > 0) {
+        $("#prefsModalPrefsFormPasswordEnabledButton").attr("class", "btn btn-danger");
+        $("#prefsModalPrefsFormPasswordEnabledButton").button('toggle');
+        $("#prefsModalPrefsFormPasswordEnabledButtonText").html("<i class='icon-resize-full icon-white'></i> password disabled");
+      } else {
+        $("#prefsModalPrefsFormPasswordEnabledButton").attr("class", "btn btn-success");
+        $("#prefsModalPrefsFormPasswordEnabledButtonText").html("<i class='icon-resize-small icon-white'></i> password enabled");
+      }
+    }
+
+    // #########################
+    // SESSION STORAGE
+    // #########################
+    function EstablishSession(callback) {
+      if (sessionStorage["coordinates"]) {
+        var coordinatesFromLocalStorage = JSON.parse(sessionStorage["coordinates"]);
+        if (coordinatesFromLocalStorage.length > 0) {
+          callback(true);
+        }
+      } else {
+        callback(false);
+      }
+    }
+
+    function LocalStoreMapData(data) {
+      var singleData;
+      if (!sessionStorage["coordinates"]) {
+        singleData = [{ "sort": parseInt(sessionStorage["followCount"]) + 1, "lat": data.lat, "lon": data.lon, "when": data.when, "kph": data.kph, "mph": data.mph }];
+        sessionStorage["coordinates"] = JSON.stringify(singleData);
+      } else {
+        singleData = { "sort": parseInt(sessionStorage["followCount"]) + 1, "lat": data.lat, "lon": data.lon, "when": data.when, "kph": data.kph, "mph": data.mph };
+        var multiData = JSON.parse(sessionStorage["coordinates"]);
+        multiData.push(singleData);
+        sessionStorage["coordinates"] = JSON.stringify(multiData);
+      }
+    }
+
+    // #########################
+    // ENABLE / DISABLE PAGE ELEMENTS
+    // #########################
+    function stopFollowing() {
+      $('#locateButtonsMain').attr('class', 'btn-group');
+      $('#stopFollowingButton').attr('class', 'btn btn-danger hidden');
+      enableTrackingButtons(true);
+    }
+
+    function enableTrackingButtons(showLocate) {
+      $('#spinnerHeader').attr('class', 'hidden');
+      $('#waitingHeader').attr('class', 'hidden');
+      if (showLocate) {
+        $('#locateButton').attr('class', 'btn btn-success');
+        $('#locateButton').prop('disabled', false);
+        $('#locateButtonCaret').attr('class', 'btn dropdown-toggle btn-success');
+        $('#locateButtonCaret').prop('disabled', false);
+      } else {
+        $('#locateButtonsMain').attr('class', 'btn-group hidden');
+        $('#stopFollowingButton').attr('class', 'btn btn-danger');
+        $('#waitingHeader').attr('class', 'spinnerObO');
+      }
+      $('#noDataCanvasLocateButton').attr('class', 'btn btn-primary btn-large');
+      $('#noDataCanvasLocateButton').prop('disabled', false);
+    }
+
+    function disableTrackingButtons() {
+      $('#waitingHeader').attr('class', 'hidden');
+      $('#spinnerHeader').attr('class', 'spinnerBob');
+      if (!sessionStorage["multi"]) {
+        $('#locateButton').attr('class', 'btn btn-success disabled');
+        $('#locateButton').prop('disabled', true);
+        $('#locateButtonCaret').attr('class', 'btn dropdown-toggle btn-success disabled');
+        $('#locateButtonCaret').prop('disabled', true);
+      } else {
+        $('#locateButtonsMain').attr('class', 'btn-group hidden');
+        $('#stopFollowingButton').attr('class', 'btn btn-danger');
+      }
+      $('#noDataCanvasLocateButton').attr('class', 'btn btn-primary btn-large disabled');
+      $('#noDataCanvasLocateButton').prop('disabled', true);
+    }
+
+    function enablePage() {
+      if ($.cookie('token')) {
+        $("#brandUser").text("welcome " + $.cookie('userid') + "!");
+      } else if ($.cookie('userid')) {
+        $.cookie('userid').lastIndexOf("s") === ($.cookie('userid').length - 1)
+          ? $("#brandUser").text($.cookie('userid') + "' page")
+          : $("#brandUser").text($.cookie('userid') + "'s page");
+      }
+      $('#ledIndicator').attr('class', 'led-green');
+      $('#locateButton').attr('class', 'btn btn-success');
+      $('#locateButton').prop('disabled', false);
+      $('#locateButtonCaret').attr('class', 'btn dropdown-toggle btn-success');
+      $('#locateButtonCaret').prop('disabled', false);
+      $('#smsButton').attr('class', 'btn btn-info');
+      $('#smsButton').prop('disabled', false);
+      $('#mapButton').attr('class', 'btn btn-info');
+      $('#mapButton').prop('disabled', false);
+    }
+
+    function disablePage() {
+      $("#brandUser").text('');
+      $("#waitingUser").text($.cookie('userid'));
+      $('#ledIndicator').attr('class', 'led-red');
+      $('#locateButton').attr('class', 'btn btn-danger disabled');
+      $('#locateButton').prop('disabled', true);
+      $('#locateButtonCaret').attr('class', 'btn dropdown-toggle btn-danger disabled');
+      $('#locateButtonCaret').prop('disabled', true);
+      $('#smsButton').attr('class', 'btn btn-info disabled');
+      $('#smsButton').prop('disabled', true);
+      $('#mapButton').attr('class', 'btn btn-info disabled');
+      $('#mapButton').prop('disabled', true);
+    }
+
+    // #########################
+    // SOCKET.IO
+    // #########################
+    var socket;
+    function socketSetup() {
+      socket = io.connect();
+
+      socket.on('connect', function () {
+        // connection established with server, emit the userid to the server
+        // TODO:  SECURE METHOD
+        socket.emit('client_event_setuserid', { userid: $.cookie('userid') });
+      });
+
+      // new coordinates, map the single data point
+      socket.on('server_event_coordinates', function (data) {
+        if (parseInt(sessionStorage["locationQuery"]) === 1) {
+          sessionStorage.removeItem("locationQuery");
+          if (parseInt(sessionStorage["multi"]) === 1) {
+            sessionStorage["found"] = 1;
+          }
+          if (!sessionStorage["multi"]) {
+            sessionStorage["followCount"] = 0;
+            enableTrackingButtons(true);
+          } else {
+            enableTrackingButtons(false);
+          }
+          LocalStoreMapData(data);
+          initializeMapData(JSON.parse(sessionStorage["coordinates"]));
+        }
+      });
+
+      socket.on('server_event_sms', function (data) {
+        $("#smsCanvas").append('<div class="alert alert-success maxWidth"><button type="button" class="close" data-dismiss="alert">&times;</button><strong>' + data.number + '</strong><br />' + data.message + '</div>');
+        if ($("#smsButton").attr("class").indexOf("active") === -1) {
+          $("#refresher").attr('class', 'icon-star-empty icon-white');
+        }
+      });
+
+      socket.on('server_event_running', function (data) {
+        if (data.running) {
+          enablePage();
+          if (!sessionStorage["coordinates"]) {
+            $('#noDataCanvas').attr('class', '');
+            $('#notRunningNoDataCanvas').attr('class', 'hidden');
+          }
+        } else {
+          disablePage();
+          if (!sessionStorage["coordinates"]) {
+            $('#noDataCanvas').attr('class', 'hidden');
+            $('#notRunningNoDataCanvas').attr('class', '');
+          }
+        }
+      });
+
+      socket.on('server_event_registered', function (data) {
+        // account is registered (first login from device), hide the unregistered canvas and show the map canvas
+        $.when(getIsRunningAjax($.cookie('userid')))
+        .done(function (data, status, response) {
+          if (data.result) {
+            $('#noDataCanvas').attr('class', '');
+            $('#unregisteredCanvas').attr('class', 'hidden');
+          } else {
+            $('#notRunningNoDataCanvas').attr('class', '');
+            $('#unregisteredCanvas').attr('class', 'hidden');
+          }
+        })
+        .fail(function () {
+          go("error");
+        });
+      });
+    }
+
+    // #########################
+    // DISCONNECT BUTTON CONTROLLER
+    // #########################
+    // called by "disconnect" button click
+    function disconnect() {
+      socket.emit('client_event_disconnect_device', { disconnect: true });
+    }
+
+    // #########################
+    // LOCATION BUTTON CONTROLLERS
+    // #########################
+    // called by "locate" button click
+    function runDeviceProcess_Locate(follow) {
+      if (follow === 1) {
+        sessionStorage["multi"] = follow;
+      } else {
+        sessionStorage.removeItem("multi");
+        clearSessionStorage();
+        sessionStorage["followCount"] = 0;
+      }
+      if (parseInt(sessionStorage["followCount"]) === 0) {
+        sessionStorage.removeItem("coordinates");
+      }
+
+      // emit the request to get coordinates on the server socket connection
+      socket.emit('client_event_getcoordinates', { run: true });
+      disableTrackingButtons();
+      sessionStorage["locationQuery"] = 1;
+    }
+
+    // called by "follow" link
+    function runMulti() {
+      sessionStorage["followCount"] = 0;
+      runDeviceProcess_Locate(1);
+      sessionStorage["interval"] = setInterval(function () {
+        if (parseInt(sessionStorage["found"]) === 1) {
+          sessionStorage.removeItem("found");
+          sessionStorage["followCount"] = parseInt(sessionStorage["followCount"]) + 1;
+          runDeviceProcess_Locate(1);
+        }
+      }, 35000);
+    }
+
+    // called by "stop following..." button click
+    function stopMulti() {
+      clearInterval(parseInt(sessionStorage["interval"]));
+      clearSessionStorage();
+      stopFollowing();
+    }
+
+    function clearSessionStorage() {
+      sessionStorage.removeItem("interval");
+      sessionStorage.removeItem("locationQuery");
+      sessionStorage.removeItem("found");
+    }
+
+    // #########################
+    // GPS MAPPING
+    // #########################
+    var map = null;
+    var panorama = null;
+    var options = {
+      mapTypeId: google.maps.MapTypeId.HYBRID,
+      zoom: 9,
+      disableDefaultUI: true,
+      mapTypeControl: true,
+      mapTypeControlOptions: {
+        style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR
+      }
+    };
+
+    function setUpPanorama(lat, lon) {
+      var location = new google.maps.LatLng(lat, lon);
+      panorama = map.getStreetView();
+      panorama.setPosition(location);
+      panorama.setPov({
+        heading: 265,
+        pitch: 0
+      });
+      panorama.setVisible(true);
+    }
+
+    function initializeMapData(data) {
+      if (data) {
+        if (data.length === 1) {
+          enableMap();
+          $('#noDataCanvas').attr('class', 'hidden');
+        }
+        map = new google.maps.Map(document.getElementById('mapCanvas'), options);
+        drawMapData(data);
+        google.maps.event.addListenerOnce(map, 'zoom_changed', function () {
+          if (map.getZoom() > 19) { map.setZoom(19); }
+        });
+      } else {
+        //alert("No data available.");
+      }
+    }
+
+    function drawMapData(data) {
+      var bounds = new google.maps.LatLngBounds();
+      for (var i = 0; i < data.length; i++) {
+        bounds.extend(new google.maps.LatLng(data[i].lat, data[i].lon));
+      }
+
+      map.fitBounds(bounds);
+
+      if (!sessionStorage["multi"]) {
+        setTimeout(function () {
+          for (var i = 0; i < data.length; i++) {
+            drawMapCircle(data[i].lat, data[i].lon, data[i].when, data[i].mph, data[i].kph, data[i].sort, false, false);
+          }
+        }, 500);
+      } else {
+        for (var i = 0; i < data.length; i++) {
+          if (i === 0) {
+            drawMapCircle(data[i].lat, data[i].lon, data[i].when, data[i].mph, data[i].kph, data[i].sort, true, false);
+          } else if (i + 1 === data.length) {
+            drawMapCircle(data[i].lat, data[i].lon, data[i].when, data[i].mph, data[i].kph, data[i].sort, false, true);
+          } else {
+            drawMapCircle(data[i].lat, data[i].lon, data[i].when, data[i].mph, data[i].kph, data[i].sort, false, false);
+          }
+        }
+      }
+    }
+
+    function drawMapCircle(latitude, longitude, when, mph, kph, sort, starter, ender) {
+      if (!sessionStorage["multi"]) {
+        var styleIconClass = new StyledIcon(StyledIconTypes.MARKER, { color: "#A4D1EA", starcolor: "#FFEA85" });
+        var styleMaker = new StyledMarker({
+          styleIcon: new StyledIcon(StyledIconTypes.MARKER, styleIconClass),
+          position: new google.maps.LatLng(latitude, longitude),
+          title: when,
+          animation: google.maps.Animation.DROP,
+          map: map
+        });
+      } else if (starter) {
+        var styleIconClass = new StyledIcon(StyledIconTypes.BUBBLE, { color: "#58B058", text: sort });
+        var styleMaker = new StyledMarker({
+          styleIcon: new StyledIcon(StyledIconTypes.BUBBLE, styleIconClass),
+          position: new google.maps.LatLng(latitude, longitude),
+          title: when,
+          map: map
+        });
+      } else if (ender) {
+        var styleIconClass = new StyledIcon(StyledIconTypes.BUBBLE, { color: "#D04640", text: sort });
+        var styleMaker = new StyledMarker({
+          styleIcon: new StyledIcon(StyledIconTypes.BUBBLE, styleIconClass),
+          position: new google.maps.LatLng(latitude, longitude),
+          title: when,
+          map: map
+        });
+      } else {
+        var styleIconClass = new StyledIcon(StyledIconTypes.BUBBLE, { color: "#A4D1EA", text: sort });
+        var styleMaker = new StyledMarker({
+          styleIcon: new StyledIcon(StyledIconTypes.BUBBLE, styleIconClass),
+          position: new google.maps.LatLng(latitude, longitude),
+          title: when,
+          map: map
+        });
+      }
+
+      var infoWindowContent;
+      if (!sessionStorage["multi"] || starter || ender) {
+        var sv = new google.maps.StreetViewService();
+        var location = new google.maps.LatLng(latitude, longitude);
+        sv.getPanoramaByLocation(location, 50, function (data, status) {
+          if (status == 'OK') {
+            infoWindowContent = "<div class='infoWindowInner'>" +
+              when + "<br>" +
+              mph + " mph  /  " + kph + " kph" +
+              "<br><a href='#' onclick='setUpPanorama(" + latitude + ", " + longitude + ")'>street view</a>" +
+              "</div>";
+          }
+          addInfoWindow(styleMaker, infoWindowContent);
+        });
+      } else {
+        infoWindowContent = "<div class='infoWindowInner'>" +
+          when + "<br>" +
+          mph + " mph  /  " + kph + " kph" +
+          "</div>";
+        addInfoWindow(styleMaker, infoWindowContent);
+      }
+    }
+
+    function addInfoWindow(marker, message) {
+      var info = message;
+      var infoWindow = new google.maps.InfoWindow({
+        content: message
+      });
+      google.maps.event.addListener(marker, 'click', function () {
+        infoWindow.open(map, marker);
+      });
+    }
+
+    // #########################
+    // MISC PAGE FUNCTIONS
+    // #########################
+    function logout() {
+      $.removeCookie('userid');
+      $.removeCookie('token');
+      go('login');
+    }
+
+    function go(location) {
+      document.location = "https://tookaride.com/" + location;
+    }
+
+    function enableSms() {
+      $('#mapCanvas').attr('class', 'hidden');
+      $('#smsCanvas').attr('class', '');
+      $("#refresher").attr('class', 'icon-star-empty icon-white hidden');
+    }
+
+    function enableMap() {
+      $('#mapCanvas').attr('class', '');
+      $('#smsCanvas').attr('class', 'hidden');
+      $('#mapButton').button('toggle');
+    }
+
+  </script>
+</head>
+<body>
+  <div id="containerNavBar" class="navbar navbar-fixed-top">
+    <div class="navbar-inner">
+
+      <!-- ########################## -->
+      <!-- NAVIGATION BAR             -->
+      <!-- ########################## -->
+      <div class="container">
+        <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </a>
+        <ul class="nav pull-left">
+          <li>
+            <div id="ledIndicator" class="hidden"></div>
+          </li>
+        </ul>
+        <a class="brand" href="index">tookaride</a><a class="brand" href="javascript:location.reload();">&nbsp;<span id="brandUser"></span></a>
+        <ul class="nav pull-left">
+          <li>
+            <div class="divLeftPadding20">&nbsp;</div>
+          </li>
+          <li>
+            <div class="btn-group" data-toggle="buttons-radio">
+              <button type="button" id="mapButton" onclick="enableMap();" class="btn btn-info">gps</button>
+              <button type="button" id="smsButton" onclick="enableSms();" class="btn btn-info">sms <i id="refresher" class="icon-star-empty icon-white hidden"></i></button>
+            </div>
+          </li>
+          <li>
+            <button type="button" id="disconnectButton" onclick="disconnect();" class="btn btn-warning">X</button>
+          </li>
+          <li>
+            <div class="divLeftPadding20">&nbsp;</div>
+          </li>
+          <li>
+            <div id="locateButtonsMain" class="btn-group">
+              <button id="locateButton" class="hidden" onclick="runDeviceProcess_Locate(0);"><i class='icon-user icon-white'></i>&nbsp;locate</button>
+              <button id="locateButtonCaret" data-toggle="dropdown">
+                <i class='icon-chevron-down icon-white'></i>
+              </button>
+              <ul class="dropdown-menu">
+                <li>
+                  <a href="#" onclick="runMulti();"><i class='icon-eye-open'></i>&nbsp;&nbsp;follow</a>
+                </li>
+              </ul>
+            </div>
+            <button class="btn btn-danger hidden" id="stopFollowingButton" onclick="stopMulti();"><i class='icon-eye-close icon-white'></i>&nbsp;stop following...</button>
+          </li>
+          <li>
+            <div id="spinnerHeader" class="hidden"></div>
+            <div id="waitingHeader" class="hidden">
+              <div class="double-bounce1"></div>
+              <div class="double-bounce2"></div>
+            </div>
+          </li>
+        </ul>
+        <div id="loggedInControls" class="hidden">
+          <ul class="nav pull-right">
+            <li><a id="prefslink" href="#" data-target="#prefsModal" data-toggle="modal"><i class="icon-check icon-white"></i>&nbsp;preferences</a></li>
+            <li><a href="#" onclick="logout();"><i class="icon-off icon-white"></i>&nbsp;logout</a></li>
+          </ul>
+        </div>
+        <div id="notLoggedInControls" class="hidden">
+          <ul class="nav pull-right">
+            <li><a href="#" onclick="go('login');"><i class="icon-off icon-white"></i>&nbsp;login</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="div-top60responsive"></div>
+
+  <!-- ########################## -->
+  <!-- MAP CANVAS                 -->
+  <!-- ########################## -->
+  <div id="mapCanvas" class="hidden"></div>
+
+  <!-- ########################## -->
+  <!-- SMS CANVAS                 -->
+  <!-- ########################## -->
+  <div id="smsCanvas" class="hidden"></div>
+
+  <!-- ########################## -->
+  <!-- UNREGISTERED CANVAS        -->
+  <!-- ########################## -->
+  <div id="unregisteredCanvas" class="hidden">
+    <div class="form-signin centerText">
+      <h3>to get started, download the app!</h3>
+      <a href="apk/wwhf-debug-unaligned.apk">
+        <img src="https://tookaride.com/images/Google-Android-Download-128.png" style="border: 0;" />
+      </a>
+    </div>
+  </div>
+
+  <!-- ########################## -->
+  <!-- NO DATA CANVAS             -->
+  <!-- ########################## -->
+  <div id="noDataCanvas" class="hidden">
+    <div class="form-signin centerText">
+      <h3>click below to find <span id="noDataCanvasUsernameLabel"></span>!</h3>
+      <div class="buttonTopMargin">
+        <button type="button" id="noDataCanvasLocateButton" class="btn btn-primary btn-large" onclick="runDeviceProcess_Locate(0);"><i class='icon-user icon-white'></i>&nbsp;locate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ########################## -->
+  <!-- NOT RUNNING NO DATA CANVAS -->
+  <!-- ########################## -->
+  <div id="notRunningNoDataCanvas" class="hidden">
+    <div class="centerText">
+      <div class="loaderHolder div-top20">
+        <h4>waiting for <span id="waitingUser"></span>...</h4>
+        <div class="spinnerWirls">
+          <div class="bounce1"></div>
+          <div class="bounce2"></div>
+          <div class="bounce3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ########################## -->
+  <!-- FOOTER                     -->
+  <!-- ########################## -->
+  <div class="container div-footer">
+    <hr>
+    <footer>
+      <span style="color: #999999;">&copy; 2013 tookaride labs | </span><a href="mailto:info@tookaride.com" style="color: #999999;">contact</a>
+    </footer>
+  </div>
+
+  <!-- ########################## -->
+  <!-- PREFERENCES MODAL          -->
+  <!-- ########################## -->
+  <div id="prefsModal" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-header">
+      <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+      <h3 id="myModalLabel">account preferences</h3>
+    </div>
+
+    <!-- ########################## -->
+    <!-- PREFERENCES MODAL: LOGIN   -->
+    <!-- ########################## -->
+    <div id="prefsModalLoginForm">
+      <div class="modal-body">
+        <h4>you'll need to sign in to access the account preferences</h4>
+        <div class="textLeftMargin20">
+          <div class="hidden" style="width: 240px" id="prefsModalLoginFormErrorLabel"></div>
+          <p>
+            <input type="text" id="prefsModalLoginFormUsernameInput" placeholder="username or email">
+          </p>
+          <p>
+            <input type="password" id="prefsModalLoginFormPasswordInput" placeholder="password">
+          </p>
+          <table style="width: 300px">
+            <tr>
+              <td style="width: 180px">
+                <button class="btn btn-primary btn-large btn-block" onclick="loginAccount();">sign in</button>
+              </td>
+              <td>
+                <div class="div-top20">
+                  &nbsp;&nbsp;&nbsp;<a href="forgot">forgot password</a>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnclose0" class="btn" data-dismiss="modal">close</button>
+      </div>
+    </div>
+
+    <!-- ########################## -->
+    <!-- PREFERENCES MODAL: FORM    -->
+    <!-- ########################## -->
+    <div id="prefsModalPrefsForm" class="hidden">
+      <div class="modal-body">
+        <h4>your username is <span id="prefsModalUsernameLabel"></span></h4>
+        <div class="textLeftMargin">
+          <p>your map url is <a id="prefsModalMapUrlHref"><strong><span id="prefsModalMapUrlLabel"></span></strong></a></p>
+        </div>
+        <br />
+        <h4>update your account</h4>
+        <div class="textLeftMargin">
+          <p>you can change your <strong>email address</strong>:</p>
+          <div class="textLeftMargin20">
+            <div class="hidden" id="prefsModalPrefsFormEmailErrorLabel" style="width: 240px"></div>
+            <p>
+              <input type="text" id="prefsModalPrefsFormEmailInput">
+            </p>
+          </div>
+          <p>you can update your <strong>password</strong>:</p>
+          <div class="textLeftMargin20">
+            <div class="hidden" id="prefsModalPrefsFormPasswordErrorLabel" style="width: 240px"></div>
+            <p>
+              <input type="password" id="prefsModalPrefsFormPasswordInput" placeholder="enter a new password...">
+            </p>
+          </div>
+        </div>
+        <h4>security</h4>
+        <div class="textLeftMargin">
+          <p>click the button below to <a href="#" id="prefsModalSecurityPopover" rel="popover" title="password security" data-toggle="popover" data-placement="top" data-content="by disabling password security you are allowing anyone to access your account url without entering a password."><span id="which">change password protection</span></a> for your account.</p>
+        </div>
+        <div class="textLeftMargin20">
+          <p>
+            <button type="button" id="prefsModalPrefsFormPasswordEnabledButton" class="btn btn-success" onclick="togglePrefsModalPrefsFormPasswordEnabledButtonColor();"><span id="prefsModalPrefsFormPasswordEnabledButtonText"><i class='icon-resize-small icon-white'></i>password enabled</span></button>
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnclose" class="btn" data-dismiss="modal">Close</button>
+        <button class="btn btn-primary" onclick="setPreferences();">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="bootstrap/js/jquery.cookie.js"></script>
+  <script src="bootstrap/js/bootstrap-transition.js"></script>
+  <script src="bootstrap/js/bootstrap-alert.js"></script>
+  <script src="bootstrap/js/bootstrap-modal.js"></script>
+  <script src="bootstrap/js/bootstrap-dropdown.js"></script>
+  <script src="bootstrap/js/bootstrap-scrollspy.js"></script>
+  <script src="bootstrap/js/bootstrap-tab.js"></script>
+  <script src="bootstrap/js/bootstrap-collapse.js"></script>
+  <script src="bootstrap/js/bootstrap-carousel.js"></script>
+  <script src="bootstrap/js/bootstrap-typeahead.js"></script>
+</body>
+</html>
