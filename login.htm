@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tookaride &gt; login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="awesome">
+  <meta name="author" content="tookaride labs">
+
+  <link href="bootstrap/css/bootstrap.css" rel="stylesheet">
+  <link href="bootstrap/css/bootstrap-responsive.css" rel="stylesheet">
+  <link href="css/local.css" rel="stylesheet">
+
+  <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+  <!-- copied html5.js locally from https://html5shim.googlecode.com/svn/trunk/html5.js -->
+  <!--[if lt IE 9]>
+      <script src="bootstrap/js/html5.js"></script>
+    <![endif]-->
+
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="bootstrap/ico/apple-touch-icon-144-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="114x114" href="bootstrap/ico/apple-touch-icon-114-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="72x72" href="bootstrap/ico/apple-touch-icon-72-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" href="bootstrap/ico/apple-touch-icon-57-precomposed.png">
+  <link rel="shortcut icon" href="bootstrap/ico/favicon.ico">
+
+  <script src="bootstrap/js/jquery.js"></script>
+  <script type="text/javascript">
+    $(document).ready(function () {
+      $("#username").focus();
+      if ($.cookie('login')) {
+        $('#username').val($.cookie('loginattempt'));
+        $('#loginerror').attr('class', 'alert alert-error');
+        $('#loginerror').text('sign in error, please try again');
+        $.removeCookie('login');
+        $.removeCookie('loginattempt');
+        $('#password').focus();
+      }
+      $("input").bind("keydown", function (event) {
+        var keycode = (event.keyCode ? event.keyCode : (event.which ? event.which : event.charCode));
+        if (keycode == 13) {
+          done();
+          return false;
+        } else {
+          return true;
+        }
+      });
+    });
+
+    function login() {
+      var postdata = JSON.stringify({
+        account: $('#username').val(),
+        password: $('#password').val()
+      })
+      return $.ajax({
+        url: "https://tookaride.com/account/login",
+        type: "POST",
+        data: postdata,
+        processData: false,
+        contentType: "application/json"
+      });
+    }
+
+    function validateInput() {
+      var value = true;
+      if ($('#username').val() === '' && $('#password').val() === '') {
+        $('#loginerror').attr('class', 'alert alert-error');
+        $('#loginerror').text('sorry! you must enter a username');
+        value = false;
+      }
+      return value;
+    }
+
+    function clearErrors() {
+      $('#loginerror').attr('class', 'hidden');
+    }
+
+    function done() {
+      clearErrors();
+      if (!validateInput()) return false;
+      $.when(login())
+      .done(function (data, status, response) {
+        if (data.userid !== undefined) {
+          go(data.userid)
+        } else {
+          $('#loginerror').attr('class', 'alert alert-error');
+          $('#loginerror').text('sign in error, please try again');
+          $('#password').val('');
+          $('#password').focus();
+        }
+      })
+      .fail(function () {
+        go("error");
+      });
+    }
+
+    function go(account) {
+      document.location = "https://tookaride.com/" + account;
+    }
+  </script>
+</head>
+<body>
+  <div class="navbar navbar-fixed-top">
+    <div class="navbar-inner">
+      <div class="container">
+        <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </a>
+        <a class="brand" href="index">tookaride</a>
+        <div class="nav-collapse collapse">
+          <ul class="nav">
+            <li><a href="register"><i class="icon-gift icon-white"></i>&nbsp;join</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container div-top40responsive">
+    <div class="div-top buttonBottomMargin">
+      <div class="form-signin">
+        <h3 class="form-signin-heading"><span>please sign in</span></h3>
+        <div class="buttonTopMargin">
+          <div class="hidden" id="loginerror"></div>
+          <input id="username" type="text" class="input-block-level" placeholder="username or email" maxlength="36">
+          <input id="password" type="password" class="input-block-level" placeholder="password" maxlength="36">
+        </div>
+        <div class="buttonTopMargin">
+          <table>
+            <tr>
+              <td style="width: 180px">
+                <button id="loginbtn" class="btn btn-large btn-primary btn-block" onclick="done()">sign in</button>
+              </td>
+              <td>
+                <div class="div-top20">
+                  &nbsp;&nbsp;&nbsp;<a href="forgot">forgot password</a>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="container div-footer">
+      <hr>
+      <footer>
+        <span style="color: #999999;">&copy; 2013 tookaride labs | </span><a href="mailto:info@tookaride.com" style="color: #999999;">contact</a>
+      </footer>
+    </div>
+  </div>
+
+  <script src="bootstrap/js/jquery.cookie.js"></script>
+  <script src="bootstrap/js/bootstrap-transition.js"></script>
+  <script src="bootstrap/js/bootstrap-alert.js"></script>
+  <script src="bootstrap/js/bootstrap-modal.js"></script>
+  <script src="bootstrap/js/bootstrap-dropdown.js"></script>
+  <script src="bootstrap/js/bootstrap-scrollspy.js"></script>
+  <script src="bootstrap/js/bootstrap-tab.js"></script>
+  <script src="bootstrap/js/bootstrap-tooltip.js"></script>
+  <script src="bootstrap/js/bootstrap-popover.js"></script>
+  <script src="bootstrap/js/bootstrap-button.js"></script>
+  <script src="bootstrap/js/bootstrap-collapse.js"></script>
+  <script src="bootstrap/js/bootstrap-carousel.js"></script>
+  <script src="bootstrap/js/bootstrap-typeahead.js"></script>
+
+</body>
+</html>
