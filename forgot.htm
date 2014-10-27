@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tookaride &gt; login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="awesome">
+  <meta name="author" content="tookaride labs">
+
+  <link href="bootstrap/css/bootstrap.css" rel="stylesheet">
+  <link href="bootstrap/css/bootstrap-responsive.css" rel="stylesheet">
+  <link href="css/local.css" rel="stylesheet">
+
+  <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+  <!-- copied html5.js locally from https://html5shim.googlecode.com/svn/trunk/html5.js -->
+  <!--[if lt IE 9]>
+      <script src="bootstrap/js/html5.js"></script>
+    <![endif]-->
+
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="bootstrap/ico/apple-touch-icon-144-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="114x114" href="bootstrap/ico/apple-touch-icon-114-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="72x72" href="bootstrap/ico/apple-touch-icon-72-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" href="bootstrap/ico/apple-touch-icon-57-precomposed.png">
+  <link rel="shortcut icon" href="bootstrap/ico/favicon.ico">
+
+  <script src="bootstrap/js/jquery.js"></script>
+  <script type="text/javascript">
+    $(document).ready(function () {
+      $("#username").focus();
+      $("input").bind("keydown", function (event) {
+        var keycode = (event.keyCode ? event.keyCode : (event.which ? event.which : event.charCode));
+        if (keycode == 13) {
+          done();
+          return false;
+        } else {
+          return true;
+        }
+      });
+    });
+
+    function validateInput() {
+      if ($('#username').val() === '') {
+        $('#forgoterror').attr('class', 'alert alert-error');
+        $('#forgoterror').text('sorry! all fields are required');
+        return false;
+      }
+      return true;
+    }
+
+    function clearErrors() {
+      $('#forgoterror').attr('class', 'hidden');
+    }
+
+    function done() {
+      clearErrors();
+      if (!validateInput()) return false;
+      $.when(forgot())
+      .done(function (data, status, response) {
+        if ($.cookie('userid')) { go($.cookie('userid')); } else { go("index"); }
+      })
+      .fail(function () {
+        go("error");
+      });
+    }
+
+    function forgot() {
+      var postdata = JSON.stringify({
+        userid: $('#username').val()
+      })
+      return $.ajax({
+        url: "https://tookaride.com/account/login/forgot",
+        type: "POST",
+        data: postdata,
+        processData: false,
+        contentType: "application/json"
+      });
+    }
+
+    function go(location) {
+      document.location = "https://tookaride.com/" + location;
+    }
+  </script>
+</head>
+<body>
+  <div class="navbar navbar-fixed-top">
+    <div class="navbar-inner">
+      <div class="container">
+        <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </a>
+        <a class="brand" href="index">tookaride</a>
+        <div class="nav-collapse collapse">
+          <ul class="nav">
+            <li><a href="register"><i class="icon-gift icon-white"></i>&nbsp;join</a></li>
+            <li><a href="login"><i class="icon-home icon-white"></i>&nbsp;home</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container div-top40responsive">
+    <div class="div-top buttonBottomMargin">
+      <div class="form-signin">
+        <h3 class="form-signin-heading"><span>forget your password?</span></h3>
+        <h5 class="form-signin-heading"><span>no problem! we'll send you instructions to set a new password</span></h5>
+        <div class="hidden" id="forgoterror"></div>
+        <input id="username" type="text" class="input-block-level" placeholder="username or email" maxlength="36">
+        <div class="buttonTopMargin">
+          <button id="done" class="btn btn-large btn-primary btn-block" onclick="done();">done!</button>
+        </div>
+      </div>
+    </div>
+    <div class="container div-footer">
+      <hr>
+      <footer>
+        <span style="color: #999999;">&copy; 2013 tookaride labs | </span><a href="mailto:info@tookaride.com" style="color: #999999;">contact</a>
+      </footer>
+    </div>
+  </div>
+
+  <script src="bootstrap/js/jquery.cookie.js"></script>
+  <script src="bootstrap/js/bootstrap-transition.js"></script>
+  <script src="bootstrap/js/bootstrap-alert.js"></script>
+  <script src="bootstrap/js/bootstrap-modal.js"></script>
+  <script src="bootstrap/js/bootstrap-dropdown.js"></script>
+  <script src="bootstrap/js/bootstrap-scrollspy.js"></script>
+  <script src="bootstrap/js/bootstrap-tab.js"></script>
+  <script src="bootstrap/js/bootstrap-tooltip.js"></script>
+  <script src="bootstrap/js/bootstrap-popover.js"></script>
+  <script src="bootstrap/js/bootstrap-button.js"></script>
+  <script src="bootstrap/js/bootstrap-collapse.js"></script>
+  <script src="bootstrap/js/bootstrap-carousel.js"></script>
+  <script src="bootstrap/js/bootstrap-typeahead.js"></script>
+
+</body>
+</html>
