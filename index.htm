@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tookaride</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="awesome">
+  <meta name="author" content="tookaride labs">
+  <meta name="keywords" content="map, gps, android, free">
+  <meta name="robots" content="index, follow, archive">
+
+  <link href="bootstrap/css/bootstrap.css" rel="stylesheet">
+  <link href="bootstrap/css/bootstrap-responsive.css" rel="stylesheet">
+  <link href="css/local.css" rel="stylesheet">
+
+  <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+  <!-- copied html5.js locally from https://html5shim.googlecode.com/svn/trunk/html5.js -->
+  <!--[if lt IE 9]>
+      <script src="bootstrap/js/html5.js"></script>
+    <![endif]-->
+
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="bootstrap/ico/apple-touch-icon-144-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="114x114" href="bootstrap/ico/apple-touch-icon-114-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" sizes="72x72" href="bootstrap/ico/apple-touch-icon-72-precomposed.png">
+  <link rel="apple-touch-icon-precomposed" href="bootstrap/ico/apple-touch-icon-57-precomposed.png">
+  <link rel="shortcut icon" href="bootstrap/ico/favicon.ico">
+
+  <script src="bootstrap/js/jquery.js"></script>
+  <script type="text/javascript">
+    $(document).ready(function () {
+      if ($.cookie('token')) {
+        $("#hello").attr("class", "");
+        $("#hello").html("<a href='#' class='brand' onclick='goAccount();'>&nbsp;welcome, " + $.cookie("userid") + "!</a>");
+        $("#formpostup").attr("class", "hidden");
+        $("#hiddenRegister").attr("class", "hidden");
+        $("#loggedInControls").attr("class", "");
+      } else if ($.cookie('userid')) {
+        $("#hello").attr("class", "");
+        $("#hello").html("<a href='#' class='brand' onclick='goAccount();'>&nbsp;&gt;&nbsp;" + $.cookie("userid") + "</a>");
+        $("#home").attr("class", "hidden");
+      }
+      $("#userid").focus();
+      $("input").bind("keydown", function (event) {
+        var keycode = (event.keyCode ? event.keyCode : (event.which ? event.which : event.charCode));
+        if (keycode == 13) {
+          if (event.srcElement.id === "userid") { register(); } else { done(); }
+          return false;
+        } else {
+          return true;
+        }
+      });
+    });
+
+    function showUsername(input) {
+      $('#url').text(input.replace(/[^A-Za-z0-9\ ]+/gi, "").toString().replace(/ /gi, "-"));
+    }
+
+    function login() {
+      var postdata = JSON.stringify({
+        account: $('#usernameInput').val(),
+        password: $('#passwordInput').val()
+      })
+      return $.ajax({
+        url: "https://tookaride.com/account/login",
+        type: "POST",
+        data: postdata,
+        processData: false,
+        contentType: "application/json"
+      });
+    }
+
+    function validateInput() {
+      var value = true;
+      if ($('#usernameInput').val() === '' && $('#passwordInput').val() === '') {
+        value = false;
+      }
+      return value;
+    }
+
+    function done() {
+      if (!validateInput()) { return false; }
+      $.when(login())
+      .done(function (data, status, response) {
+        if (data.userid !== undefined) {
+          go(data.userid)
+        } else {
+          $.cookie('login', 'false');
+          $.cookie('loginattempt', $('#usernameInput').val());
+          go('login');
+        }
+      })
+      .fail(function () {
+        go("error");
+      });
+    }
+
+    function register() {
+      if ($('#userid').val().length > 0) { $.cookie('regdata', $('#userid').val()); }
+      go('register');
+    }
+
+    function goAccount() {
+      if ($.cookie('userid')) { go($.cookie('userid')); }
+      else { go("login"); }
+    }
+
+    function logout() {
+      $.removeCookie('userid');
+      $.removeCookie('token');
+      go('login');
+    }
+
+    function go(location) {
+      document.location = "https://tookaride.com/" + location;
+    }
+  </script>
+</head>
+<body>
+  <div class="navbar navbar-fixed-top">
+    <div class="navbar-inner">
+      <div class="container">
+        <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </a>
+        <a class="brand" href="index">tookaride</a><div id="hello" class="hide"></div>
+        <div id="mainmenu" class="nav-collapse collapse">
+          <div id="hiddenRegister">
+            <ul class="nav">
+              <li><a href="register"><i class="icon-gift icon-white"></i>&nbsp;join</a></li>
+              <li id="home"><a href="#" onclick="goAccount();"><i class="icon-home icon-white"></i>&nbsp;home</a></li>
+            </ul>
+          </div>
+          <div id="formpostup" class="navbar-form pull-right">
+            <input class="inputWidthRepsonsive" id="usernameInput" type="text" placeholder="username" maxlength="36">
+            <input class="inputWidthRepsonsive" id="passwordInput" type="password" placeholder="password" maxlength="36">
+            <button id="loginbtn" type="submit" class="btn btn-info" onclick="done()">sign in</button>
+          </div>
+          <div id="loggedInControls" class="hidden">
+            <ul class="nav pull-right">
+              <li><a href="#" onclick="goAccount();"><i class="icon-home icon-white"></i>&nbsp;home</a></li>
+              <li><a href="#" onclick="logout();"><i class="icon-off icon-white"></i>&nbsp;logout</a></li>
+            </ul>
+          </div>
+          <div id="notLoggedInControls" class="hidden">
+            <ul class="nav pull-right">
+              <li><a href="#" onclick="go('login');"><i class="icon-off icon-white"></i>&nbsp;login</a></li>
+            </ul>
+          </div>
+<!--          <div id="hiddenLogout" class="hidden">
+            <ul class="nav pull-right">
+              <li><a href="#" onclick="goAccount();"><i class="icon-home icon-white"></i>&nbsp;home</a></li>
+              <li><a href="#" onclick="logout();"><i class="icon-off icon-white"></i>&nbsp;logout</a></li>
+            </ul>
+          </div>-->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="myCarousel" class="carousel slide">
+    <div class="carousel-inner">
+      <div class="item active pattern">
+        <!--<img src="https://tookaride.com/images/background.jpg" alt="">-->
+        <div class="container">
+          <div class="carousel-caption">
+            <h1>tookaride</h1>
+            <div class="textLeftMargin">
+              <p class="lead">
+                android remote control<br />
+                private, secure, free<br />
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container marketing">
+    <div class="row">
+      <div class="span4">
+        <h3>what we offer you</h3>
+        An android and web application designed to allow you to remotely control your android in whatever way you'd like.<br />
+        New features and updates will be frequent, so stay tuned.<br />
+        Please <a href="mailto:info@tookaride.com">send feedback</a>!<br />
+        <h4>ready to get started?</h4>
+      </div>
+      <div class="span4">
+        <h3>1. choose your username</h3>
+        <div class="buttonTopMargin">
+          <input name="userid" type="text" id="userid" class="big" onkeyup="showUsername(this.value);" maxlength="16" />
+        </div>
+        <p>
+          your new tookaride home:<br />
+          https://tookaride.com/<b><span id="url"></span></b>
+        </p>
+        <div class="buttonTopMargin">
+          <button type="submit" class="btn btn-primary btn-large" onclick="register();">complete registration</button>
+        </div>
+      </div>
+      <div class="span4">
+        <h3>2. download the app</h3>
+        <a href="apk/wwhf-debug-unaligned.apk">
+          <img src="https://tookaride.com/images/Google-Android-Download-128.png" style="border: 0;" />
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="container div-footerResponsive">
+    <hr>
+    <footer>
+      <span style="color: #999999;">&copy; 2013 tookaride labs | </span><a href="mailto:info@tookaride.com" style="color: #999999;">contact</a>
+    </footer>
+  </div>
+
+  <script src="bootstrap/js/jquery.cookie.js"></script>
+  <script src="bootstrap/js/bootstrap-transition.js"></script>
+  <script src="bootstrap/js/bootstrap-alert.js"></script>
+  <script src="bootstrap/js/bootstrap-modal.js"></script>
+  <script src="bootstrap/js/bootstrap-dropdown.js"></script>
+  <script src="bootstrap/js/bootstrap-scrollspy.js"></script>
+  <script src="bootstrap/js/bootstrap-tab.js"></script>
+  <script src="bootstrap/js/bootstrap-tooltip.js"></script>
+  <script src="bootstrap/js/bootstrap-popover.js"></script>
+  <script src="bootstrap/js/bootstrap-button.js"></script>
+  <script src="bootstrap/js/bootstrap-collapse.js"></script>
+  <script src="bootstrap/js/bootstrap-carousel.js"></script>
+  <script src="bootstrap/js/bootstrap-typeahead.js"></script>
+
+</body>
+</html>
